@@ -10,10 +10,22 @@ Yellow/Black Glassmorphism UI with:
 """
 
 import html
+import os
 from datetime import datetime
 
 import streamlit as st
 from PIL import Image
+
+# ── Streamlit Cloud secret injection ──────────────────────────────────────────
+# On Streamlit Cloud, secrets set in the dashboard are available via st.secrets.
+# Inject them into os.environ so that story_generator.py (which uses os.getenv)
+# picks them up correctly regardless of deployment environment.
+# This block runs before any other imports that touch the API key.
+try:
+    if "GOOGLE_API_KEY" in st.secrets:
+        os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
+except Exception:
+    pass  # Running locally — python-dotenv in story_generator.py handles it
 
 from story_generator import (
     generate_story_streaming,

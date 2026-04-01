@@ -23,7 +23,10 @@ from PIL import Image
 
 load_dotenv()
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# NOTE: Do NOT cache the key at module level.
+# Reading it fresh inside _get_client() ensures Streamlit Cloud secrets
+# (injected into os.environ by app.py at startup) are always picked up,
+# even if the module was imported before the secrets were available.
 MODEL_NAME = "gemini-2.5-flash-lite"
 
 # ─── LANGUAGE CONFIGURATION ───────────────────────────────────────────────────
@@ -251,12 +254,19 @@ def compute_image_hash(image: Image.Image) -> str:
 # ─── CLIENT FACTORY ───────────────────────────────────────────────────────────
 
 def _get_client() -> genai.Client:
-    """Return an authenticated Gemini client, raising on missing key."""
-    if not GOOGLE_API_KEY:
+    """
+    Return an authenticated Gemini client.
+    Reads the API key fresh on every call so that keys injected into
+    os.environ after module import (e.g. from Streamlit Cloud secrets)
+    are always picked up correctly.
+    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
         raise EnvironmentError(
-            "GOOGLE_API_KEY is not set. Add it to your .env file."
+            "GOOGLE_API_KEY is not set. "
+            "Add it to your .env file (local) or Streamlit Cloud secrets (deployed)."
         )
-    return genai.Client(api_key=GOOGLE_API_KEY)
+    return genai.Client(api_key=api_key)
 
 
 def _build_contents(images: list, style: str, language: str = "English") -> list:
