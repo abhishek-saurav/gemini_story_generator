@@ -1,0 +1,382 @@
+================================================================================
+CHANGELOG — Luminara AI Story Engine
+Developer Audit Trail
+================================================================================
+Project:      gemini_story_generator → Luminara AI Story Engine
+Branch:       v2-story-generator
+Prepared by:  Engineering Enhancement Passes (Claude Code)
+================================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASS 1 — v2.1  (2026-04-01)
+Initial feature enhancement, UI redesign, and documentation
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+────────────────────────────────────────────────────────────────────────────────
+story_generator.py  [MODIFIED]
+────────────────────────────────────────────────────────────────────────────────
+
+[2026-04-01 10:00:01] | REFACTOR | Module-level client instantiation removed.
+  Before: `client = genai.Client(api_key=api_key)` ran at import time.
+          Missing key crashed before UI rendered.
+  After:  `_get_client()` factory called on demand inside each generator fn.
+  Reason: Decouple startup from API availability.
+
+[2026-04-01 10:02:14] | FEATURE | Added `generate_story_streaming()`.
+  Before: Only blocking `generate_story_from_images()` existed.
+  After:  Generator function using `client.models.generate_content_stream()`.
+          Yields token chunks; AttributeError caught → fallback to batch mode.
+  Reason: Real-time typewriter effect; first token visible in <1s.
+
+[2026-04-01 10:05:30] | ENHANCEMENT | Rewrote `create_advanced_prompt()`.
+  Before: Single generic template with style name interpolated once.
+  After:  `_STYLE_DIRECTIVES` dict maps 7 genres to specific narrative
+          instructions (pacing, structure, techniques). Prompt adds structural
+          arc, perspective, and hard rules.
+  Reason: Style-specific directives produce genre-authentic output.
+
+[2026-04-01 10:08:00] | BUG FIX | Fixed `contents` list nesting bug.
+  Before: `contents=[images, prompt]` — images list nested inside list.
+  After:  `_build_contents()` returns flat `[prompt] + images`.
+  Reason: Correct multimodal API structure.
+
+[2026-04-01 10:10:15] | FEATURE | Added `compute_image_hash()`.
+  Reason: Required for story versioning fingerprinting.
+
+[2026-04-01 10:12:00] | IMPROVEMENT | `narrate_story()` returns None on
+  failure instead of error string. Added empty-input guard.
+
+[2026-04-01 10:13:30] | REFACTOR | Added module docstring and architecture
+  comments above `generate_story_streaming()`.
+
+────────────────────────────────────────────────────────────────────────────────
+story_history.py  [NEW FILE]
+────────────────────────────────────────────────────────────────────────────────
+
+[2026-04-01 10:20:00] | NEW FILE | Story versioning and persistent history
+  module. Exposes: save_story, get_all_stories, get_story_by_id,
+  delete_story, clear_all_history, get_stats.
+
+[2026-04-01 10:21:00] | DESIGN | JSON file storage chosen over SQLite.
+  HISTORY_FILE = ".story_history.json", MAX_HISTORY_ENTRIES = 100.
+
+[2026-04-01 10:23:00] | FEATURE | Image fingerprinting for version tracking.
+  `_fingerprint_images()` MD5-hashes each image, joins with underscores.
+  `save_story()` increments version when same fingerprint+style re-generated.
+
+[2026-04-01 10:25:00] | FEATURE | `get_stats()` aggregation function.
+  Returns: total, per-style breakdown, avg_words, most_used_style, total_words.
+
+────────────────────────────────────────────────────────────────────────────────
+app.py  [HEAVILY MODIFIED]
+────────────────────────────────────────────────────────────────────────────────
+
+[2026-04-01 10:35:00] | REDESIGN | Full Yellow/Black Glassmorphism CSS theme.
+  2000+ char THEME_CSS with: radial-gradient background, glass card surfaces,
+  blur + border + inset highlights, gold button gradients, streaming cursor,
+  custom scrollbar, Playfair Display + Inter fonts, fadeInUp animation.
+
+[2026-04-01 10:40:00] | FEATURE | Streaming story rendering with st.empty().
+
+[2026-04-01 10:43:00] | FEATURE | History panel in sidebar with restore/delete.
+
+[2026-04-01 10:46:00] | ADDITION | Session state management `_init_state()`.
+  8 keys: current_story, current_style, current_images, current_image_names,
+  audio_buffer, last_entry_id, restore_story, is_generating.
+
+[2026-04-01 10:49:00] | REDESIGN | HTML hero section replaces st.title().
+
+[2026-04-01 10:51:00] | REDESIGN | Sidebar brand block replaces st.header().
+
+[2026-04-01 10:53:00] | ADDITION | Usage stats panel in sidebar.
+
+[2026-04-01 10:55:00] | ADDITION | Welcome/empty state with 4-step guide.
+
+[2026-04-01 10:57:00] | ADDITION | Four render paths (generate, restore,
+  persist, welcome).
+
+[2026-04-01 10:59:00] | ADDITION | `_render_story_html()` with HTML escaping.
+
+[2026-04-01 11:01:00] | ADDITION | `STYLE_ICONS` dict for genre emoji mapping.
+
+[2026-04-01 11:03:00] | ADDITION | Generation status bar with pulsing gold dot.
+
+[2026-04-01 11:05:00] | ADDITION | Inline image count validation (gold/red).
+
+────────────────────────────────────────────────────────────────────────────────
+Minor Fixes (v2.1)
+────────────────────────────────────────────────────────────────────────────────
+
+[2026-04-01 11:30:00] | FIX | "atleast" → "at least", "occured" → "occurred".
+[2026-04-01 11:31:00] | FIX | Removed trailing space and period from title.
+[2026-04-01 11:32:00] | FIX | Removed `print("project starting...")` debug stmt.
+[2026-04-01 11:33:00] | FIX | Removed unused `compute_image_hash` import in app.py.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASS 2 — v2.2  (2026-04-01)
+Story continuation, multi-language, download, full narration
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+────────────────────────────────────────────────────────────────────────────────
+story_generator.py  [MODIFIED]
+────────────────────────────────────────────────────────────────────────────────
+
+[2026-04-01 14:00:00] | FEATURE | Added `LANGUAGE_CONFIGS` dict.
+  Before: No language support. All stories hardcoded to English. TTS hardcoded
+          to lang="en". No language directive in prompts.
+  After:  Dict maps 3 language names to:
+            tts_code      — gTTS language code ("en", "hi")
+            prompt_directive — native-language instruction for Gemini
+            tts_note      — user-facing caveat (Bhojpuri uses Hindi TTS)
+  Supported: English (en), Hindi (hi / Devanagari), Bhojpuri (hi TTS voice,
+             authentic Bhojpuri prose generation via Gemini).
+  Reason:  Feature 5 — multi-language support.
+
+[2026-04-01 14:02:00] | FEATURE | Added `LANGUAGES` constant (list of keys from
+  LANGUAGE_CONFIGS). Consumed by app.py's language selectbox.
+
+[2026-04-01 14:04:00] | MODIFICATION | Updated `create_advanced_prompt()` to
+  accept `language: str = "English"` parameter.
+  Before: Prompt hardcoded "modern English" in Language line.
+  After:  Looks up `LANGUAGE_CONFIGS[language]["prompt_directive"]` and injects
+          it into the ═══ LANGUAGE ═══ section of the prompt. Hindi and Bhojpuri
+          directives are written in Devanagari so Gemini responds in that script.
+  Reason: Language directive must be native for the model to reliably respond
+          in the target language.
+
+[2026-04-01 14:07:00] | FEATURE | Added `create_continuation_prompt()`.
+  Before: No continuation capability existed.
+  After:  New prompt builder that takes: previous_story (full prior text),
+          twist_style (new genre), chapter_num, language. Produces a structured
+          prompt with: full previous story as context, twist directive pulled
+          from _STYLE_DIRECTIVES, language directive, and chapter requirements
+          (no recap, 300–450 words, must end on a hook).
+  Reason: Foundation for Feature 3 (story continuation with genre twist).
+
+[2026-04-01 14:10:00] | FEATURE | Added `generate_continuation_streaming()`.
+  Before: Only `generate_story_streaming()` existed (images → story).
+  After:  New generator function that takes (previous_story, twist_style,
+          chapter_num, language). Calls `create_continuation_prompt()`, sends
+          text-only content (no images) to `generate_content_stream()`. Same
+          AttributeError fallback pattern as `generate_story_streaming()`.
+  Reason: Feature 3 — streaming chapter continuation without re-uploading images.
+  Notes:  Continuation is text-only (no images). The previous story provides
+          all necessary visual context via prose description.
+
+[2026-04-01 14:13:00] | MODIFICATION | Updated `generate_story_streaming()` to
+  accept `language: str = "English"` and pass it to `_build_contents()`.
+  Before: Language not supported; always used English prompt.
+  After:  Language forwarded to `create_advanced_prompt()` via `_build_contents()`.
+
+[2026-04-01 14:15:00] | MODIFICATION | Updated `_build_contents()` to accept
+  `language` parameter and forward to `create_advanced_prompt()`.
+
+[2026-04-01 14:17:00] | MODIFICATION | Updated `narrate_story()` to accept
+  `language: str = "English"` parameter.
+  Before: `gTTS(text=..., lang="en", slow=False)` always.
+  After:  `tts_code = LANGUAGE_CONFIGS.get(language, ...)["tts_code"]`
+          used for the `lang=` argument. Hindi stories → lang="hi",
+          Bhojpuri stories → lang="hi" (with note shown in UI).
+  Reason: Feature 5 — language-appropriate TTS voice.
+
+[2026-04-01 14:19:00] | ADDITION | Added `get_tts_note(language)` helper.
+  Returns the tts_note string from LANGUAGE_CONFIGS, or None.
+  Used by app.py to conditionally show a warning about Bhojpuri TTS limitation.
+
+[2026-04-01 14:20:00] | MODIFICATION | Updated `generate_story_from_images()`
+  to accept and forward `language` parameter (backward compat kept).
+
+[2026-04-01 14:21:00] | MODIFICATION | Updated module docstring to list all 5
+  features.
+
+────────────────────────────────────────────────────────────────────────────────
+story_history.py  [MODIFIED]
+────────────────────────────────────────────────────────────────────────────────
+
+[2026-04-01 14:30:00] | MODIFICATION | Updated `save_story()` signature.
+  Before: `save_story(story_text, style, images, image_names) -> str`
+  After:  `save_story(story_text, style, images, image_names, language="English",
+           chapters=None, chapter_genres=None) -> str`
+  Reason: History entries must store language and per-chapter data for correct
+          restoration and multi-chapter display.
+
+[2026-04-01 14:31:00] | MODIFICATION | Updated history entry schema in
+  `save_story()` to include new fields:
+    "language"       — e.g. "English", "Hindi", "Bhojpuri"
+    "chapters"       — List[str] of individual chapter texts
+    "chapter_genres" — List[str] of genre per chapter
+    "chapter_count"  — int, len(chapters)
+  Before: Entry had no chapters list, no language, no chapter_count.
+  After:  All fields present. Old entries restored without these fields will
+          use fallbacks: `entry.get("chapters", [entry["story"]])` etc.
+  Reason: Feature 3 requires per-chapter storage; Feature 5 requires language
+          persistence so restored stories narrate in the correct language.
+
+[2026-04-01 14:33:00] | BACKWARD COMPAT | v2.1 history entries (missing
+  chapters/language fields) load safely via .get() with defaults.
+  No migration script needed — defaults are inferred from existing fields.
+
+────────────────────────────────────────────────────────────────────────────────
+app.py  [HEAVILY MODIFIED — complete rewrite]
+────────────────────────────────────────────────────────────────────────────────
+
+[2026-04-01 14:40:00] | IMPORT | Added `generate_continuation_streaming`,
+  `get_tts_note`, `LANGUAGE_CONFIGS` to story_generator imports.
+
+[2026-04-01 14:41:00] | CONSTANTS | Added `LANGUAGES = list(LANGUAGE_CONFIGS.keys())`
+  and `LANG_FLAGS = {"English":"🇬🇧","Hindi":"🇮🇳","Bhojpuri":"🪘"}`.
+
+[2026-04-01 14:42:00] | SESSION STATE | Updated `_init_state()` with new keys:
+    "all_chapters"      — List[str] per-chapter text accumulator
+    "chapter_genres"    — List[str] per-chapter genre tracker
+    "current_language"  — str, persists language across reruns
+    "is_continuing"     — bool, continuation guard (prevents double-submit)
+  Before: 8 session state keys.
+  After:  12 session state keys.
+  Reason: Continuation and language state must survive reruns.
+
+[2026-04-01 14:45:00] | CSS | Added new CSS classes to THEME_CSS:
+    .chapter-header — gold uppercase chapter title with bottom border
+    .continuation-panel — gold-tinted continuation section container
+    .continuation-title — uppercase label for continuation panel
+    .lang-badge — pill showing language (grey/white, distinct from style-badge)
+    .chapter-pill — history item pill showing chapter count
+  Before: No chapter/continuation/language-specific styling.
+  After:  Each new UI element has matching glassmorphism styling.
+
+[2026-04-01 14:50:00] | ADDITION | Added `_render_chapters(chapters, genres)` helper.
+  Before: All story display used `_render_story_html(single_text)`.
+  After:  Multi-chapter stories render each chapter with a `chapter-header`
+          divider. Single-chapter stories render without header (no change to
+          existing UX for first generation).
+  Reason: Feature 3 — visual separation of chapters.
+
+[2026-04-01 14:52:00] | ADDITION | Added `_format_download_text(chapters, genres,
+  language, image_names) -> str`.
+  Before: No download capability.
+  After:  Formats the full story as plain text with:
+            header (title, date, language, genre chain, image list)
+            per-chapter sections with title dividers (multi-chapter only)
+            footer with attribution
+  Reason: Feature 4 — downloadable story file.
+
+[2026-04-01 14:54:00] | ADDITION | Added `_story_meta_bar()` helper.
+  Returns HTML showing: style badge, language badge (with flag emoji),
+  word count, chapter count. Displayed below every story view.
+  Reason: Quick info summary without cluttering the story display area.
+
+[2026-04-01 14:56:00] | ADDITION | Added `_show_narration_section(story_text, language)`.
+  Before: Narration code was duplicated in generate and persist paths.
+  After:  Single function handles: TTS note display, audio generation (cached
+          in session state), st.audio() render. Audio is only re-generated if
+          `st.session_state.audio_buffer is None`.
+  Reason: DRY principle; audio cache invalidation on continuation.
+
+[2026-04-01 14:58:00] | ADDITION | Added `_show_continuation_panel(language) -> (twist, bool)`.
+  Before: No continuation UI.
+  After:  Renders continuation panel with:
+            chapter count label (dynamic: "Add Chapter N")
+            twist genre selectbox (all 7 styles)
+            generate button (key="continue_btn", disabled during generation)
+          Returns (selected_twist_style, button_clicked).
+  Reason: Centralise continuation UI so it can be shown in all story paths.
+
+[2026-04-01 15:00:00] | ADDITION | Added `_show_download_button(chapters, genres,
+  language, image_names)`.
+  Before: No download button.
+  After:  `st.download_button()` with dynamic filename:
+          `luminara_{genre}_{N}ch.txt` (e.g. luminara_thriller_3ch.txt).
+          Data is UTF-8 encoded bytes from `_format_download_text()`.
+          Mime type: text/plain.
+  Reason: Feature 4 — allows users to export the full story at any point.
+
+[2026-04-01 15:02:00] | SIDEBAR | Added language selectbox between style
+  selector and generate button.
+  Before: Sidebar had: upload, style, generate button.
+  After:  Sidebar has: upload, style, language (new), generate button.
+  Language selectbox key: default "Language" with label_visibility="collapsed".
+  Shows flag + language name as caption below selectbox.
+
+[2026-04-01 15:04:00] | SIDEBAR | History items updated to show language flag
+  and chapter count pill alongside existing style/version info.
+
+[2026-04-01 15:06:00] | RENDER PATHS | Restructured from 4 to 5 render paths:
+  PATH 1: generate_button → new generation (unchanged except language + chapters init)
+  PATH 2: is_continuing → continuation streaming (NEW)
+  PATH 3: restore_story → history restore (updated for chapters + language)
+  PATH 4: current_story → story persist (updated for chapters + continuation panel)
+  PATH 5: else → welcome (updated to show 5 steps instead of 4)
+  Reason: PATH 2 is the core of Feature 3. Without a dedicated path, the
+          continuation state would be lost between reruns.
+
+[2026-04-01 15:08:00] | PATH 1 | Updated generation path:
+  - Reads `language` from sidebar selectbox
+  - Stores language in session state
+  - Passes language to `generate_story_streaming()`
+  - Initialises `all_chapters = [full_story]` and `chapter_genres = [story_style]`
+  - Calls `save_story()` with language, chapters, chapter_genres
+  - Shows `_show_continuation_panel()` after audio
+  - If continue clicked → sets is_continuing=True, calls st.rerun()
+
+[2026-04-01 15:10:00] | PATH 2 | New continuation path:
+  - Reads previous chapters from session state
+  - Reads twist_style from `st.session_state["twist_genre_select"]`
+  - Calls `generate_continuation_streaming(prev_text, twist, chapter_num, lang)`
+  - Streams new chapter into `cont_slot = st.empty()`
+  - Appends new chapter to all_chapters, genre to chapter_genres
+  - Invalidates audio_buffer (sets to None) so full narration is re-generated
+  - Saves updated multi-chapter story to history
+  - Shows meta bar, download button, narration, and another continuation panel
+
+[2026-04-01 15:14:00] | PATH 3 | Restore path updated:
+  - Sets all_chapters and chapter_genres from entry.get("chapters", ...)
+  - Sets current_language from entry.get("language", "English")
+  - Shows _render_chapters() for multi-chapter restored stories
+  - Shows continuation panel if current_images are in session state
+
+[2026-04-01 15:16:00] | PATH 4 | Persist path updated:
+  - Renders chapters with _render_chapters()
+  - Shows meta bar, download button, narration section, continuation panel
+  - If continue clicked → is_continuing=True, rerun
+
+[2026-04-01 15:18:00] | WELCOME | Updated welcome state to show 5 steps
+  (added "Continue with a twist" step).
+
+[2026-04-01 15:20:00] | AUDIO INVALIDATION | When a new chapter is added,
+  `st.session_state.audio_buffer = None` forces re-generation of audio for
+  the full story (all chapters combined). This ensures the narration always
+  covers the complete story, not just the first chapter.
+  Before: Audio only covered Chapter 1.
+  After:  Audio covers all chapters combined when narration is triggered.
+
+────────────────────────────────────────────────────────────────────────────────
+New Files (v2.2)
+────────────────────────────────────────────────────────────────────────────────
+
+[2026-04-01 15:25:00] | README.md | Created comprehensive GitHub README with:
+  features list, tech stack, setup instructions, usage guide, project structure,
+  contributing guidelines, and license section.
+
+[2026-04-01 15:26:00] | CHANGELOG.txt | Updated to include Pass 2 (v2.2) entries.
+
+[2026-04-01 15:27:00] | PROJECT_DETAILS.txt | Updated Features section with
+  Features 3, 4, 5 and updated architecture/data-flow sections.
+
+================================================================================
+SUMMARY
+================================================================================
+Version 2.1 files modified:  2 (app.py, story_generator.py)
+Version 2.1 files created:   3 (story_history.py, CHANGELOG.txt, PROJECT_DETAILS.txt)
+Version 2.1 bugs fixed:      3 (contents nesting, TTS return type, debug print)
+
+Version 2.2 files modified:  4 (app.py, story_generator.py, story_history.py,
+                                 CHANGELOG.txt, PROJECT_DETAILS.txt)
+Version 2.2 files created:   1 (README.md)
+
+Total features across both passes:
+  Feature 1: Real-time streaming generation
+  Feature 2: Story versioning & history
+  Feature 3: Multi-chapter continuation with genre twist
+  Feature 4: Download full story as .txt
+  Feature 5: Multi-language support (English / Hindi / Bhojpuri)
+================================================================================

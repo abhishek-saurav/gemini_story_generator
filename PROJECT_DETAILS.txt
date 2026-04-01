@@ -1,0 +1,521 @@
+================================================================================
+PROJECT DETAILS — Luminara AI Story Engine
+Comprehensive Technical Documentation
+================================================================================
+Version:       2.2 (Post-Enhancement Pass 2)
+Last Updated:  2026-04-01
+Branch:        v2-story-generator
+Documentation: Written for new developers, technical auditors, system architects
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. PROJECT OVERVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1.1 Purpose
+───────────
+Luminara is a local web application that uses Google's Gemini multimodal AI
+to generate creative, genre-specific stories from user-provided images. Users
+upload 1–10 photographs, choose a narrative genre and language, and Luminara
+generates a 350–500 word story streamed live, word-by-word. The story is
+narrated as audio, saveable as a .txt file, and extendable chapter-by-chapter
+with genre twists.
+
+1.2 Core Functionality
+──────────────────────
+  Feature 1 — Real-Time Streaming Generation:
+    Story text appears word-by-word via Gemini's streaming API. First token
+    visible in under 1 second; animated gold cursor signals active writing.
+
+  Feature 2 — Story Versioning & History:
+    Every story is auto-saved to a local JSON store. Users browse the last 10
+    stories in the sidebar, restore any past story, and track version numbers
+    for repeated image+genre combinations.
+
+  Feature 3 — Multi-Chapter Continuation with Genre Twist:
+    After generating Chapter 1, users select a twist genre and generate Chapter
+    2, 3, 4… The new chapter continues the story seamlessly while shifting genre
+    energy (e.g. a Comedy story gains a Thriller twist in Ch. 2). Chapters
+    accumulate in session state and all are displayed together with chapter
+    headers.
+
+  Feature 4 — Download Full Story (.txt):
+    A download button exports the entire multi-chapter story as a formatted
+    plain-text file with header metadata (date, language, genre chain, images).
+
+  Feature 5 — Multi-Language Support:
+    Stories can be generated in English, Hindi (Devanagari script), or Bhojpuri.
+    The language directive is embedded natively in the AI prompt. TTS narration
+    uses the appropriate language voice (Hindi voice for Bhojpuri, closest
+    available in gTTS).
+
+1.3 Target Users
+────────────────
+  • Creative writers seeking AI-assisted visual story prompts
+  • Educators building multilingual storytelling exercises
+  • General users exploring AI narrative with personal photographs
+  • Developers studying multimodal AI + Streamlit application patterns
+
+1.4 Deployment Context
+──────────────────────
+  Local-first. Run with `streamlit run app.py`. No backend server, database,
+  or auth system. External calls: Google Gemini API, Google TTS (gTTS), and
+  Google Fonts CDN.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. SYSTEM ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 Component Diagram
+──────────────────────
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Browser — localhost:8501                                        │
+  │  ┌──────────────┐   ┌──────────────────────────────────────────┐│
+  │  │   Sidebar    │   │         Main Content Area                ││
+  │  │ • Upload     │   │ • Hero header                            ││
+  │  │ • Genre      │   │ • Image grid                             ││
+  │  │ • Language   │   │ • Chapter 1 stream → Ch2 stream…        ││
+  │  │ • Generate   │   │ • Continuation panel (twist + button)   ││
+  │  │ • Stats      │   │ • Download button                        ││
+  │  │ • History    │   │ • Audio narration (full story)           ││
+  │  └──────────────┘   └──────────────────────────────────────────┘│
+  └──────────────────────────────┬──────────────────────────────────┘
+                                 │ Streamlit reruns
+  ┌──────────────────────────────▼──────────────────────────────────┐
+  │                    app.py (Orchestrator)                          │
+  │  5 render paths · session state · HTML/CSS injection · helpers   │
+  └───────────────┬────────────────────────┬────────────────────────┘
+                  │                        │
+  ┌───────────────▼────────────┐  ┌────────▼────────────────────────┐
+  │    story_generator.py      │  │    story_history.py             │
+  │  generate_story_streaming  │  │  save_story()                   │
+  │  generate_continuation_    │  │  get_all_stories()              │
+  │    streaming()             │  │  delete_story()                 │
+  │  narrate_story(lang)       │  │  get_stats()                    │
+  │  LANGUAGE_CONFIGS          │  │  clear_all_history()            │
+  │  _STYLE_DIRECTIVES         │  └────────┬────────────────────────┘
+  └───────────────┬────────────┘           │
+                  │                        │ JSON read/write
+  ┌───────────────▼────────────┐  ┌────────▼────────────────────────┐
+  │   Google Gemini API        │  │  .story_history.json            │
+  │  gemini-2.5-flash-lite     │  │  (local persistent store)       │
+  │  streaming + batch         │  └─────────────────────────────────┘
+  └───────────────┬────────────┘
+  ┌───────────────▼────────────┐
+  │   Google TTS (gTTS)        │
+  │  lang: en / hi             │
+  │  returns BytesIO MP3       │
+  └────────────────────────────┘
+
+2.2 Data Flow — First Chapter Generation
+──────────────────────────────────────────
+  1. User uploads images + selects genre + selects language + clicks Generate
+  2. Streamlit reruns; generate_button = True
+  3. PIL images opened; stored in session state
+  4. `generate_story_streaming(images, style, language)` called
+     → `_build_contents([prompt_with_lang_directive] + images)`
+     → `client.models.generate_content_stream(model, contents)`
+     → Yields token chunks
+  5. For each chunk: accumulated + `story_slot.markdown(html, streaming=True)`
+  6. On completion: story_slot re-rendered without cursor
+  7. `all_chapters = [story]`, `chapter_genres = [style]` stored in session state
+  8. `save_story(story, style, images, names, language, chapters, genres)` → JSON
+  9. Meta bar + download button rendered
+  10. `narrate_story(story, language)` → gTTS MP3 BytesIO → st.audio()
+  11. Continuation panel rendered
+
+2.3 Data Flow — Chapter Continuation
+──────────────────────────────────────
+  1. User selects twist genre in continuation panel + clicks "Add Chapter N"
+  2. Streamlit reruns; `continue_btn` pressed → `is_continuing = True` → st.rerun()
+  3. On next rerun: PATH 2 (is_continuing = True) executes
+  4. `prev_text = "\n\n".join(all_chapters)` — full prior story as context
+  5. `generate_continuation_streaming(prev_text, twist_style, chapter_num, lang)` called
+     → `create_continuation_prompt(prev_text, twist, num, lang)`
+     → Text-only content (no images) sent to generate_content_stream
+     → Yields token chunks
+  6. New chapter streamed into `cont_slot = st.empty()`
+  7. `all_chapters.append(new_chapter)`, `chapter_genres.append(twist_style)`
+  8. `audio_buffer = None` (invalidated — full narration covers all chapters)
+  9. Updated story saved to history
+  10. Meta bar + download + narration + another continuation panel rendered
+
+2.4 Data Flow — Download
+──────────────────────────
+  1. `_format_download_text(chapters, genres, language, image_names)` called
+  2. Returns a formatted string: header + per-chapter sections + footer
+  3. `st.download_button(data=text.encode("utf-8"), file_name=..., mime="text/plain")`
+  4. Browser triggers native download — no server roundtrip, no API call
+
+2.5 Data Flow — Language-Aware Narration
+──────────────────────────────────────────
+  1. `_show_narration_section(full_story, language)` called
+  2. `get_tts_note(language)` — shows info box if Bhojpuri (Hindi voice used)
+  3. If audio_buffer is None: `narrate_story(full_story, language)` called
+     → `tts_code = LANGUAGE_CONFIGS[language]["tts_code"]`
+     → `gTTS(text=story, lang=tts_code, slow=False)`
+     → Written to BytesIO, seeked to 0
+  4. Result cached in `st.session_state.audio_buffer`
+  5. `st.audio(buffer, format="audio/mp3")` renders native browser player
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. FEATURE BREAKDOWN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3.1 Feature 1 — Real-Time Streaming Story Generation
+──────────────────────────────────────────────────────
+  Module:   story_generator.py → `generate_story_streaming()`
+  Value:    First token < 1s vs 5–15s blank wait. Typewriter effect engages users.
+  Design:   Python generator using `client.models.generate_content_stream()`.
+            AttributeError fallback to single-shot `generate_content()`.
+  UI:       `st.empty()` slot updated on each chunk. Animated cursor appended.
+  Edge cases: empty chunks skipped, API errors caught separately.
+
+3.2 Feature 2 — Story Versioning & History
+────────────────────────────────────────────
+  Module:   story_history.py (new file)
+  Value:    Auto-save every story; restore any past story without re-calling AI.
+  Design:   JSON file (.story_history.json), max 100 entries. MD5 image
+            fingerprinting for version tracking. get_stats() for analytics.
+  UI:       Sidebar expander with restore/delete buttons. Stats panel.
+  Edge cases: corrupt JSON → [], file write failure → logged, non-fatal.
+
+3.3 Feature 3 — Multi-Chapter Continuation with Genre Twist
+─────────────────────────────────────────────────────────────
+  Module:   story_generator.py → `generate_continuation_streaming()`
+            story_generator.py → `create_continuation_prompt()`
+  UI:       app.py → `_show_continuation_panel()`, PATH 2 render path
+  Value:    Users extend their story indefinitely, each chapter taking the
+            narrative in a different genre direction. Comedy → Thriller →
+            Sci-Fi is a valid story arc.
+  Design:
+    Prompting: `create_continuation_prompt()` embeds the FULL previous story
+    text as context before the chapter instruction. This gives Gemini complete
+    narrative memory without any external memory system. The twist directive
+    is injected from `_STYLE_DIRECTIVES[twist_style]` — same genre directives
+    used for first-chapter generation.
+
+    Continuation is text-only (no images). The prose already describes what
+    was in the images; re-sending images would add cost without benefit.
+
+    State: `all_chapters: List[str]` accumulates chapter texts. `chapter_genres:
+    List[str]` tracks genre per chapter. `current_story` = "\n\n".join(all_chapters)
+    (combined, used for narration and download).
+
+    Audio invalidation: `audio_buffer = None` after each new chapter forces
+    re-generation of narration covering all chapters.
+
+    History: Each continuation creates a new history entry with `chapters` and
+    `chapter_genres` arrays. Restoring a multi-chapter entry restores all
+    chapters and their genres.
+
+  UI Flow:
+    _show_continuation_panel() returns (twist_style, continue_clicked).
+    If continue_clicked → is_continuing = True → st.rerun()
+    → PATH 2 executes on next rerun → streams new chapter
+    → is_continuing = False at end of PATH 2
+    → continuation panel re-rendered for another chapter
+
+  Edge cases:
+    • Continuation fails → is_continuing set to False, error shown, existing
+      chapters preserved (no data loss)
+    • User can chain unlimited chapters (no cap enforced)
+    • Restored stories can also be continued if current_images are in session
+
+3.4 Feature 4 — Download Full Story (.txt)
+────────────────────────────────────────────
+  Function: `_format_download_text(chapters, genres, language, image_names)`
+  UI:       `st.download_button()` — native browser download, no API call
+  Format:
+    ══════════════════════════════════════════
+    LUMINARA — AI STORY ENGINE
+    Generated : April 01, 2026 at 14:30
+    Language  : Hindi
+    Genre Path: 😂 Comedy → 🔪 Thriller
+    Images    : photo1.jpg, photo2.jpg
+    ══════════════════════════════════════════
+
+    ──────────────────────────────────────────
+    Chapter 1 — Opening
+    ──────────────────────────────────────────
+
+    [chapter text]
+
+    ──────────────────────────────────────────
+    Chapter 2 — Thriller Twist
+    ──────────────────────────────────────────
+
+    [chapter text]
+
+  Filename: `luminara_{genre}_{N}ch.txt`
+           e.g. `luminara_comedy_2ch.txt`
+  Encoding: UTF-8 (required for Hindi/Bhojpuri Devanagari characters)
+  Available: After any story generation or restoration; updates automatically
+             when new chapters are added.
+
+3.5 Feature 5 — Multi-Language Support
+────────────────────────────────────────
+  Config:   `LANGUAGE_CONFIGS` dict in story_generator.py
+  Languages:
+    English   — TTS code: "en". Prompt: English directive.
+    Hindi     — TTS code: "hi". Prompt: Devanagari directive in Hindi.
+    Bhojpuri  — TTS code: "hi" (closest available). Prompt: Bhojpuri directive
+                in Devanagari. UI shows info: "Bhojpuri narration uses Hindi voice."
+
+  Prompt injection: The language directive is embedded in the ═══ LANGUAGE ═══
+    section of both `create_advanced_prompt()` and `create_continuation_prompt()`.
+    Hindi and Bhojpuri directives are written in Devanagari script — native
+    language instructions produce significantly better results than English
+    instructions saying "write in Hindi".
+
+  TTS: `narrate_story(story_text, language)` looks up `tts_code` from
+    LANGUAGE_CONFIGS. Multi-language gTTS is reliable for English and Hindi.
+    Bhojpuri's similarity to Hindi means the Hindi voice produces intelligible
+    narration despite the linguistic difference.
+
+  Download: UTF-8 encoding ensures all scripts render correctly in text editors.
+
+  Persistence: Language stored in history entry and session state so restored
+    stories narrate in the language they were generated in.
+
+  Edge cases:
+    • Unknown language → falls back to English config
+    • TTS failure in any language → None returned, warning shown in UI
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. TECHNICAL STACK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Frontend:    Streamlit ≥ 1.30.0 — Python-based reactive web UI
+             Custom CSS injected via st.markdown(unsafe_allow_html=True)
+             Fonts: Inter (UI) + Playfair Display (story/brand) via Google Fonts
+
+Backend:     Python 3.10+ — Streamlit's Tornado server (localhost)
+             st.session_state for in-process state
+             .story_history.json for durable persistence
+
+AI:          Google Gemini 2.5 Flash Lite (multimodal, streaming)
+             google-genai Python SDK
+             Auth: GOOGLE_API_KEY in .env
+
+TTS:         gTTS (Google Text-to-Speech) — "en", "hi" language codes
+             Returns BytesIO MP3 buffer
+
+Image:       Pillow (PIL) — open, display, fingerprint
+
+Config:      python-dotenv — loads .env
+
+Stdlib used: json, os, hashlib, html, datetime, io.BytesIO, typing
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. DESIGN SYSTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5.1 Color Palette
+──────────────────
+  Primary Gold:      #FFD700  — buttons, accents, titles
+  Gold Bright:       #FFF4B0  — title gradient midpoint
+  Gold Deep:         #FFC000  — button gradient end
+  Gold Muted (13%):  rgba(255,215,0,0.13) — glass card borders
+  Background:        #080808 / #0e0e0e — deep black with micro-gradient
+  Sidebar:           rgba(6,6,6,0.85) with backdrop-filter blur(40px)
+  Glass Surface:     rgba(255,255,255,0.025) — barely-there white fill
+  Text Primary:      #efefef — body text
+  Text Story:        #ddd8cc — warm white for story prose
+  Text Muted:        rgba(255,255,255,0.35) — metadata labels
+
+5.2 Typography
+───────────────
+  Inter:           UI chrome, labels, buttons, metadata (wt 300–700)
+  Playfair Display: Hero title, brand name, story prose (wt 500, 700)
+  Sizing: 0.60–3.8rem scale; hero uses clamp() for responsive sizing
+
+5.3 New CSS Classes (v2.2)
+───────────────────────────
+  .chapter-header    — gold uppercase divider between chapters
+  .continuation-panel — gold-tinted continuation section wrapper
+  .continuation-title — uppercase section label within panel
+  .lang-badge        — grey language pill (distinct from gold style-badge)
+  .chapter-pill      — small grey pill in history items showing chapter count
+  .stDownloadButton  — overridden to gold outline style (distinct from primary btn)
+
+5.4 Animation Philosophy
+──────────────────────────
+  All animations serve functional communication:
+  cursor-blink (0.85s ease-in-out): signals active streaming
+  pulse-dot (1.2s ease-in-out): generation status indicator
+  fadeInUp (0.5s cubic-bezier): story reveal on render
+  hover transitions (0.25–0.3s): responsive feedback on interactive elements
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. FOLDER STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+gemini_story_generator/
+│
+├── app.py                ← ENTRY POINT. All UI, session state, 5 render paths,
+│                           CSS injection, helper functions. Run: streamlit run app.py
+│
+├── story_generator.py    ← AI ENGINE. Gemini streaming/batch generation,
+│                           continuation prompting, TTS narration, language configs,
+│                           style directives, image hashing.
+│
+├── story_history.py      ← PERSISTENCE. JSON-backed story store. save/get/delete/
+│                           clear/stats API. Multi-chapter and language storage.
+│
+├── .story_history.json   ← RUNTIME DATA (auto-created). Max 100 entries.
+│                           Not committed to git (user data).
+│
+├── requirements.txt      ← streamlit, python-dotenv, google-genai,
+│                           google-generativeai, Pillow, gTTS
+│
+├── .env                  ← GOOGLE_API_KEY=your-key (not committed)
+│
+├── .gitignore            ← Excludes .env, .DS_Store
+│
+├── README.md             ← GitHub README (setup, usage, features, structure)
+│
+├── CHANGELOG.txt         ← Complete developer audit trail (v2.1 + v2.2)
+│
+└── PROJECT_DETAILS.txt   ← This file. Technical documentation for all stakeholders.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. HOW EVERYTHING WORKS TOGETHER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+7.1 The Five Render Paths
+──────────────────────────
+  Streamlit reruns app.py top-to-bottom on every interaction. All UI is
+  conditional on session state and the current button states:
+
+  PATH 1 — generate_button = True:
+    New story generation. Validates inputs → loads images → streams story →
+    initialises all_chapters/chapter_genres → saves history → shows meta +
+    download + audio + continuation panel.
+
+  PATH 2 — is_continuing = True (and restore_story = None):
+    Chapter continuation. Reads prev story from session state → streams new
+    chapter → appends to all_chapters → saves history → invalidates audio →
+    shows updated story + meta + download + audio + next continuation panel.
+
+  PATH 3 — restore_story is not None:
+    History restore. Renders all chapters from restored entry → shows meta +
+    download + audio + continuation panel (if images available).
+
+  PATH 4 — current_story is set (fallback persist):
+    Keeps story visible after any sidebar interaction. Renders all chapters
+    from session state + meta + download + audio + continuation panel.
+
+  PATH 5 — else:
+    Welcome state. Shows 5-step guide.
+
+7.2 Continuation Rerun Cycle
+──────────────────────────────
+  Click "Add Chapter 2"
+    → continue_btn = True in current path
+    → is_continuing = True set in session state
+    → st.rerun() called immediately
+    → Next rerun: PATH 2 executes (is_continuing = True)
+    → generate_continuation_streaming() runs to completion
+    → is_continuing = False at end of PATH 2
+    → PATH 2 renders full updated story + another continuation panel
+    → If user clicks again → same cycle
+
+7.3 Audio Invalidation on Continuation
+────────────────────────────────────────
+  Whenever a new chapter is added:
+    st.session_state.audio_buffer = None
+
+  _show_narration_section() checks:
+    if audio_buffer is None → generate and cache
+    else → use cached
+
+  This ensures narration always covers the COMPLETE story (all chapters),
+  not just the most recently generated chapter.
+
+7.4 Download File Lifecycle
+─────────────────────────────
+  Available immediately after Chapter 1 generation.
+  Updated automatically when new chapters are added (the data argument to
+  st.download_button() is computed fresh from all_chapters on every render).
+  No state caching needed — it's a pure function of current chapter list.
+
+7.5 History Entry Schema (v2.2)
+─────────────────────────────────
+  {
+    "id":               "20260401_143012_COM",
+    "timestamp_iso":    "2026-04-01T14:30:12.123456",
+    "timestamp_display":"Apr 01, 2026 · 14:30",
+    "style":            "Comedy",          // Chapter 1 genre
+    "language":         "Hindi",
+    "story":            "Full combined...", // all chapters joined
+    "chapters":         ["ch1 text", "ch2 text"],
+    "chapter_genres":   ["Comedy", "Thriller"],
+    "chapter_count":    2,
+    "word_count":       847,
+    "char_count":       4832,
+    "image_count":      3,
+    "image_names":      ["a.jpg","b.jpg","c.jpg"],
+    "fingerprint":      "a1b2c3d4e5_f6g7h8i9j0_k1l2m3n4o5",
+    "version":          1
+  }
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. FUTURE IMPROVEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+8.1 Near-Term
+──────────────
+  More Languages: Expand beyond 3 — Tamil, Telugu, Marathi, Spanish, French.
+    Add entries to LANGUAGE_CONFIGS with appropriate TTS codes.
+
+  Story Branching: After each chapter, offer 3 alternative next-chapter
+    summaries (one per genre) and let user choose before generating.
+
+  Chapter Length Control: Slider (100–800 words) injected into the length
+    requirement in both create_advanced_prompt() and create_continuation_prompt().
+
+  Voice Selection: Upgrade from gTTS to google-cloud-texttospeech for neural
+    voices, multiple accents, and male/female options per language.
+
+  PDF Export: Use reportlab or weasyprint to export stories as styled PDFs
+    with cover page, typography, and chapter formatting.
+
+8.2 Medium-Term
+────────────────
+  Multi-Agent Story Generation: Three-agent chain:
+    Agent 1: Image analyst — describes each image in prose
+    Agent 2: Plot planner — creates chapter outline
+    Agent 3: Prose writer — writes from the outline
+    Produces structurally superior output vs single-shot prompting.
+
+  Semantic Story Search: Embed all stories using sentence-transformers
+    (all-MiniLM-L6-v2). Store embeddings in history JSON. Search bar
+    finds past stories by semantic similarity — useful for large libraries.
+
+  Story Rating: Star rating (1–5) per history entry. Filter history by rating.
+    Export "Favourites" as a curated collection.
+
+8.3 Long-Term
+──────────────
+  Cloud Deployment: Docker container + Streamlit Community Cloud or GCP Cloud
+    Run. Add Firestore for history instead of local JSON. Auth via Google OAuth.
+
+  Fine-Grained Generation Controls: Temperature slider (creativity level),
+    top-p, max_tokens — exposed via an "Advanced" expander in the sidebar.
+    Maps to Gemini generation config parameters.
+
+  Collaborative Mode: Two users share a session and take turns steering chapters.
+    Requires WebSocket state sharing (Redis or Firestore pub/sub).
+
+================================================================================
+END OF PROJECT DETAILS
+================================================================================
