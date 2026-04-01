@@ -1,0 +1,582 @@
+╭─── Claude Code v2.1.89 ──────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│               Welcome back Abhishek!               │ started                 │
+│                                                    │ Run /init to create a … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ Recent activity         │
+│                        ▘▘ ▝▝                       │ No recent activity      │
+│    Sonnet 4.6 · Claude Pro ·                       │                         │
+│    abhisheksaurav.dds30@iiitb.net's Organization   │                         │
+│        ~/…/Documents/gemini_story_generator        │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Fix the wrong return type annotation first:
+
+⏺ Update(app.py)
+  ⎿  Added 1 line, removed 1 line
+      580          st.warning("Audio narration unavailable. Check your in
+           ternet connection.")
+      581  
+      582  
+      583 -def _show_continuation_panel(language: str) -> None:          
+      583 +def _show_continuation_panel(language: str) -> tuple:         
+      584      """
+      585      Render the 'Continue Story' panel below the current story.
+      586      Returns the twist style and whether the continue button wa
+           s clicked.
+
+⏺ Now fix PATH 1 — wrap in try/finally and move st.rerun() to after
+  is_generating is cleared:
+
+⏺ Update(app.py)
+  ⎿  Added 67 lines, removed 65 lines
+      824      elif len(uploaded_files) > 10:
+      825          st.error("Maximum 10 images allowed. Please remove som
+           e and try again.")
+      826      else:
+      827 -        st.session_state.is_generating = True                 
+      828 -        st.session_state.restore_story = None                 
+      829 -        st.session_state.audio_buffer = None                  
+      827 +        _trigger_continuation = False  # flag to rerun AFTER f
+          +inally clears is_generating                                   
+      828 +        try:                                                  
+      829 +            st.session_state.is_generating = True             
+      830 +            st.session_state.restore_story = None             
+      831 +            st.session_state.audio_buffer = None              
+      832  
+      831 -        pil_images = [Image.open(f) for f in uploaded_files]  
+      832 -        image_names = [f.name for f in uploaded_files]        
+      833 +            pil_images = [Image.open(f) for f in uploaded_file
+          +s]                                                            
+      834 +            image_names = [f.name for f in uploaded_files]    
+      835  
+      834 -        st.session_state.current_images = pil_images          
+      835 -        st.session_state.current_image_names = image_names    
+      836 -        st.session_state.current_style = story_style          
+      837 -        st.session_state.current_language = language          
+      836 +            st.session_state.current_images = pil_images      
+      837 +            st.session_state.current_image_names = image_names
+      838 +            st.session_state.current_style = story_style      
+      839 +            st.session_state.current_language = language      
+      840  
+      839 -        # Image grid                                          
+      840 -        st.markdown('<div class="section-label">Visual Inspira
+          -tion</div>', unsafe_allow_html=True)                          
+      841 -        cols = st.columns(min(len(pil_images), 5))            
+      842 -        for i, img in enumerate(pil_images):                  
+      843 -            with cols[i % 5]:                                 
+      844 -                st.image(img, use_container_width=True)       
+      841 +            # Image grid                                      
+      842 +            st.markdown('<div class="section-label">Visual Ins
+          +piration</div>', unsafe_allow_html=True)                      
+      843 +            cols = st.columns(min(len(pil_images), 5))        
+      844 +            for i, img in enumerate(pil_images):              
+      845 +                with cols[i % 5]:                             
+      846 +                    st.image(img, use_container_width=True)   
+      847  
+      846 -        st.markdown('<div class="gold-divider"></div>', unsafe
+          -_allow_html=True)                                             
+      848 +            st.markdown('<div class="gold-divider"></div>', un
+          +safe_allow_html=True)                                         
+      849  
+      848 -        # Streaming generation                                
+      849 -        icon = STYLE_ICONS.get(story_style, "")               
+      850 -        flag = LANG_FLAGS.get(language, "")                   
+      851 -        st.markdown(                                          
+      852 -            f'<div class="section-label">Your {icon} {story_st
+          -yle} Story &nbsp;·&nbsp; {flag} {language}</div>',            
+      853 -            unsafe_allow_html=True,                           
+      854 -        )                                                     
+      855 -        st.markdown(                                          
+      856 -            '<div class="gen-status"><div class="gen-dot"></di
+          -v>'                                                           
+      857 -            '<span>Luminara is writing your story in real-time
+          -…</span></div>',                                              
+      858 -            unsafe_allow_html=True,                           
+      859 -        )                                                     
+      850 +            icon = STYLE_ICONS.get(story_style, "")           
+      851 +            flag = LANG_FLAGS.get(language, "")               
+      852 +            st.markdown(                                      
+      853 +                f'<div class="section-label">Your {icon} {stor
+          +y_style} Story &nbsp;·&nbsp; {flag} {language}</div>',        
+      854 +                unsafe_allow_html=True,                       
+      855 +            )                                                 
+      856 +            st.markdown(                                      
+      857 +                '<div class="gen-status"><div class="gen-dot">
+          +</div>'                                                       
+      858 +                '<span>Luminara is writing your story in real-
+          +time…</span></div>',                                          
+      859 +                unsafe_allow_html=True,                       
+      860 +            )                                                 
+      861  
+      861 -        story_slot = st.empty()                               
+      862 -        full_story = ""                                       
+      863 -        error_occurred = False                                
+      862 +            story_slot = st.empty()                           
+      863 +            full_story = ""                                   
+      864 +            error_occurred = False                            
+      865  
+      865 -        try:                                                  
+      866 -            for chunk in generate_story_streaming(pil_images, 
+          -story_style, language):                                       
+      867 -                full_story += chunk                           
+      868 -                story_slot.markdown(_render_story_html(full_st
+          -ory, streaming=True), unsafe_allow_html=True)                 
+      869 -            story_slot.markdown(_render_story_html(full_story,
+          - streaming=False), unsafe_allow_html=True)                    
+      870 -        except EnvironmentError as e:                         
+      871 -            st.error(f"Configuration error: {e}")             
+      872 -            error_occurred = True                             
+      873 -        except Exception as e:                                
+      874 -            st.error(f"Generation failed: {e}")               
+      875 -            error_occurred = True                             
+      866 +            try:                                              
+      867 +                for chunk in generate_story_streaming(pil_imag
+          +es, story_style, language):                                   
+      868 +                    full_story += chunk                       
+      869 +                    story_slot.markdown(_render_story_html(ful
+          +l_story, streaming=True), unsafe_allow_html=True)             
+      870 +                story_slot.markdown(_render_story_html(full_st
+          +ory, streaming=False), unsafe_allow_html=True)                
+      871 +            except EnvironmentError as e:                     
+      872 +                st.error(f"Configuration error: {e}")         
+      873 +                error_occurred = True                         
+      874 +            except Exception as e:                            
+      875 +                st.error(f"Generation failed: {e}")           
+      876 +                error_occurred = True                         
+      877  
+      877 -        if not error_occurred and full_story:                 
+      878 -            st.session_state.all_chapters = [full_story]      
+      879 -            st.session_state.chapter_genres = [story_style]   
+      880 -            st.session_state.current_story = full_story       
+      878 +            if not error_occurred and full_story:             
+      879 +                st.session_state.all_chapters = [full_story]  
+      880 +                st.session_state.chapter_genres = [story_style
+          +]                                                             
+      881 +                st.session_state.current_story = full_story   
+      882  
+      882 -            # Save to history                                 
+      883 -            entry_id = save_story(                            
+      884 -                full_story, story_style, pil_images, image_nam
+          -es,                                                           
+      885 -                language=language,                            
+      886 -                chapters=[full_story],                        
+      887 -                chapter_genres=[story_style],                 
+      888 -            )                                                 
+      889 -            st.session_state.last_entry_id = entry_id         
+      883 +                entry_id = save_story(                        
+      884 +                    full_story, story_style, pil_images, image
+          +_names,                                                       
+      885 +                    language=language,                        
+      886 +                    chapters=[full_story],                    
+      887 +                    chapter_genres=[story_style],             
+      888 +                )                                             
+      889 +                st.session_state.last_entry_id = entry_id     
+      890  
+      891 -            # Meta bar + download                             
+      892 -            st.markdown(_story_meta_bar([full_story], [story_s
+          -tyle], language), unsafe_allow_html=True)                     
+      893 -            _show_download_button([full_story], [story_style],
+          - language, image_names)                                       
+      891 +                st.markdown(_story_meta_bar([full_story], [sto
+          +ry_style], language), unsafe_allow_html=True)                 
+      892 +                _show_download_button([full_story], [story_sty
+          +le], language, image_names)                                   
+      893 +                _show_narration_section(full_story, language) 
+      894  
+      895 -            # Narration                                       
+      896 -            _show_narration_section(full_story, language)     
+      895 +                twist, continue_clicked = _show_continuation_p
+          +anel(language)                                                
+      896 +                if continue_clicked:                          
+      897 +                    st.session_state.is_continuing = True     
+      898 +                    _trigger_continuation = True              
+      899  
+      898 -            # Continuation panel                              
+      899 -            twist, continue_clicked = _show_continuation_panel
+          -(language)                                                    
+      900 -            if continue_clicked:                              
+      901 -                st.session_state.is_continuing = True         
+      902 -                st.rerun()                                    
+      900 +        finally:                                              
+      901 +            # Always reset the flag — even if the script was i
+          +nterrupted mid-stream                                         
+      902 +            st.session_state.is_generating = False            
+      903  
+      904 -        st.session_state.is_generating = False                
+      904 +        # st.rerun() is called AFTER finally so is_generating 
+          +is already False                                              
+      905 +        if _trigger_continuation:                             
+      906 +            st.rerun()                                        
+      907  
+      908  # ─── PATH 2: STORY CONTINUATION ─────────────────────────────
+           ─────────────────
+      909  # Runs when continue button triggers a rerun and all_chapters 
+           already exists.
+
+⏺ Now fix PATH 2 with the same pattern:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(app.py)
+  ⎿  Added 86 lines, removed 84 lines
+       916      pil_images = st.session_state.current_images or []
+       917      image_names = st.session_state.current_image_names or []
+       918      language = st.session_state.current_language or "English"
+       919 -    chapters = st.session_state.all_chapters                 
+       920 -    genres = st.session_state.chapter_genres                 
+       919 +    chapters = list(st.session_state.all_chapters)   # local 
+           +copy                                                         
+       920 +    genres = list(st.session_state.chapter_genres)           
+       921      twist_style = st.session_state.get("twist_genre_select", 
+            genres[-1])
+       922      chapter_num = len(chapters) + 1
+       923  
+       924 -    # Show existing chapters first                           
+       925 -    if pil_images:                                           
+       926 -        st.markdown('<div class="section-label">Visual Inspir
+           -ation</div>', unsafe_allow_html=True)                        
+       927 -        cols = st.columns(min(len(pil_images), 5))           
+       928 -        for i, img in enumerate(pil_images):                 
+       929 -            with cols[i % 5]:                                
+       930 -                st.image(img, use_container_width=True)      
+       931 -        st.markdown('<div class="gold-divider"></div>', unsaf
+           -e_allow_html=True)                                           
+       924 +    _trigger_next_continuation = False                       
+       925 +    error_occurred = False                                   
+       926  
+       933 -    icon_init = STYLE_ICONS.get(genres[0], "")               
+       934 -    flag = LANG_FLAGS.get(language, "")                      
+       935 -    st.markdown(                                             
+       936 -        f'<div class="section-label">Your Story &nbsp;·&nbsp;
+           - {icon_init} {genres[0]} &nbsp;·&nbsp; {flag} {language}</div
+           ->',                                                          
+       937 -        unsafe_allow_html=True,                              
+       938 -    )                                                        
+       939 -    _render_chapters(chapters, genres)                       
+       927 +    try:                                                     
+       928 +        # Show existing chapters first                       
+       929 +        if pil_images:                                       
+       930 +            st.markdown('<div class="section-label">Visual In
+           +spiration</div>', unsafe_allow_html=True)                    
+       931 +            cols = st.columns(min(len(pil_images), 5))       
+       932 +            for i, img in enumerate(pil_images):             
+       933 +                with cols[i % 5]:                            
+       934 +                    st.image(img, use_container_width=True)  
+       935 +            st.markdown('<div class="gold-divider"></div>', u
+           +nsafe_allow_html=True)                                       
+       936  
+       941 -    # Stream the new chapter                                 
+       942 -    st.markdown('<div class="gold-divider"></div>', unsafe_al
+           -low_html=True)                                               
+       943 -    icon_twist = STYLE_ICONS.get(twist_style, "")            
+       944 -    st.markdown(                                             
+       945 -        f'<div class="section-label">Chapter {chapter_num} — 
+           -{icon_twist} {twist_style} Twist</div>',                     
+       946 -        unsafe_allow_html=True,                              
+       947 -    )                                                        
+       948 -    st.markdown(                                             
+       949 -        '<div class="gen-status"><div class="gen-dot"></div>'
+       950 -        f'<span>Writing Chapter {chapter_num} with a {twist_s
+           -tyle} twist…</span></div>',                                  
+       951 -        unsafe_allow_html=True,                              
+       952 -    )                                                        
+       937 +        icon_init = STYLE_ICONS.get(genres[0], "")           
+       938 +        flag = LANG_FLAGS.get(language, "")                  
+       939 +        st.markdown(                                         
+       940 +            f'<div class="section-label">Your Story &nbsp;·&n
+           +bsp; {icon_init} {genres[0]} &nbsp;·&nbsp; {flag} {language}<
+           +/div>',                                                      
+       941 +            unsafe_allow_html=True,                          
+       942 +        )                                                    
+       943 +        _render_chapters(chapters, genres)                   
+       944  
+       954 -    prev_text = "\n\n".join(chapters)                        
+       945 +        st.markdown('<div class="gold-divider"></div>', unsaf
+           +e_allow_html=True)                                           
+       946 +        icon_twist = STYLE_ICONS.get(twist_style, "")        
+       947 +        st.markdown(                                         
+       948 +            f'<div class="section-label">Chapter {chapter_num
+           +} — {icon_twist} {twist_style} Twist</div>',                 
+       949 +            unsafe_allow_html=True,                          
+       950 +        )                                                    
+       951 +        st.markdown(                                         
+       952 +            '<div class="gen-status"><div class="gen-dot"></d
+           +iv>'                                                         
+       953 +            f'<span>Writing Chapter {chapter_num} with a {twi
+           +st_style} twist…</span></div>',                              
+       954 +            unsafe_allow_html=True,                          
+       955 +        )                                                    
+       956  
+       956 -    # ── Step 1: Generate structured story summary for contex
+           -t ─────────────────                                          
+       957 -    # Extract last ~250 words verbatim for tonal/voice contin
+           -uity                                                         
+       958 -    prev_words = prev_text.split()                           
+       959 -    last_excerpt = " ".join(prev_words[-250:]) if len(prev_wo
+           -rds) > 250 else prev_text                                    
+       957 +        prev_text = "\n\n".join(chapters)                    
+       958 +        prev_words = prev_text.split()                       
+       959 +        last_excerpt = " ".join(prev_words[-250:]) if len(pre
+           +v_words) > 250 else prev_text                                
+       960  
+       961 -    summary_status = st.empty()                              
+       962 -    summary_status.markdown(                                 
+       963 -        '<div class="gen-status"><div class="gen-dot"></div>'
+       964 -        '<span>Analysing story context…</span></div>',       
+       965 -        unsafe_allow_html=True,                              
+       966 -    )                                                        
+       967 -    story_summary = summarize_story(prev_text, language)     
+       968 -    summary_status.empty()                                   
+       961 +        summary_status = st.empty()                          
+       962 +        summary_status.markdown(                             
+       963 +            '<div class="gen-status"><div class="gen-dot"></d
+           +iv>'                                                         
+       964 +            '<span>Analysing story context…</span></div>',   
+       965 +            unsafe_allow_html=True,                          
+       966 +        )                                                    
+       967 +        story_summary = summarize_story(prev_text, language) 
+       968 +        summary_status.empty()                               
+       969  
+       970 -    # ── Step 2: Stream the continuation using summary + last
+           - excerpt ──────────                                          
+       971 -    cont_slot = st.empty()                                   
+       972 -    new_chapter = ""                                         
+       973 -    error_occurred = False                                   
+       970 +        cont_slot = st.empty()                               
+       971 +        new_chapter = ""                                     
+       972  
+       975 -    try:                                                     
+       976 -        for chunk in generate_continuation_streaming(        
+       977 -            story_summary, last_excerpt, twist_style, chapter
+           -_num, language                                               
+       978 -        ):                                                   
+       979 -            new_chapter += chunk                             
+       980 -            cont_slot.markdown(_render_story_html(new_chapter
+           -, streaming=True), unsafe_allow_html=True)                   
+       981 -        cont_slot.markdown(_render_story_html(new_chapter, st
+           -reaming=False), unsafe_allow_html=True)                      
+       982 -    except Exception as e:                                   
+       983 -        st.error(f"Continuation failed: {e}")                
+       984 -        error_occurred = True                                
+       973 +        try:                                                 
+       974 +            for chunk in generate_continuation_streaming(    
+       975 +                story_summary, last_excerpt, twist_style, cha
+           +pter_num, language                                           
+       976 +            ):                                               
+       977 +                new_chapter += chunk                         
+       978 +                cont_slot.markdown(_render_story_html(new_cha
+           +pter, streaming=True), unsafe_allow_html=True)               
+       979 +            cont_slot.markdown(_render_story_html(new_chapter
+           +, streaming=False), unsafe_allow_html=True)                  
+       980 +        except Exception as e:                               
+       981 +            st.error(f"Continuation failed: {e}")            
+       982 +            error_occurred = True                            
+       983  
+       986 -    if not error_occurred and new_chapter:                   
+       987 -        chapters.append(new_chapter)                         
+       988 -        genres.append(twist_style)                           
+       989 -        full_story = "\n\n".join(chapters)                   
+       984 +        if not error_occurred and new_chapter:               
+       985 +            chapters.append(new_chapter)                     
+       986 +            genres.append(twist_style)                       
+       987 +            full_story = "\n\n".join(chapters)               
+       988  
+       991 -        st.session_state.all_chapters = chapters             
+       992 -        st.session_state.chapter_genres = genres             
+       993 -        st.session_state.current_story = full_story          
+       994 -        st.session_state.audio_buffer = None  # Invalidate ol
+           -d audio                                                      
+       989 +            st.session_state.all_chapters = chapters         
+       990 +            st.session_state.chapter_genres = genres         
+       991 +            st.session_state.current_story = full_story      
+       992 +            st.session_state.audio_buffer = None             
+       993  
+       996 -        # Update history with multi-chapter version          
+       997 -        pil_images_for_save = st.session_state.current_images
+           - or []                                                       
+       998 -        entry_id = save_story(                               
+       999 -            full_story, genres[0], pil_images_for_save, image
+           -_names,                                                      
+      1000 -            language=language, chapters=chapters, chapter_gen
+           -res=genres,                                                  
+      1001 -        )                                                    
+      1002 -        st.session_state.last_entry_id = entry_id            
+       994 +            pil_images_for_save = st.session_state.current_im
+           +ages or []                                                   
+       995 +            entry_id = save_story(                           
+       996 +                full_story, genres[0], pil_images_for_save, i
+           +mage_names,                                                  
+       997 +                language=language, chapters=chapters, chapter
+           +_genres=genres,                                              
+       998 +            )                                                
+       999 +            st.session_state.last_entry_id = entry_id        
+      1000  
+      1004 -    st.session_state.is_continuing = False                   
+      1001 +            all_ch = st.session_state.all_chapters           
+      1002 +            all_g = st.session_state.chapter_genres          
+      1003 +            st.markdown(_story_meta_bar(all_ch, all_g, langua
+           +ge), unsafe_allow_html=True)                                 
+      1004 +            _show_download_button(all_ch, all_g, language, im
+           +age_names)                                                   
+      1005 +            _show_narration_section(full_story, language)    
+      1006  
+      1006 -    # Show meta + download + narration + next continuation pa
+           -nel                                                          
+      1007 -    if not error_occurred:                                   
+      1008 -        all_ch = st.session_state.all_chapters               
+      1009 -        all_g = st.session_state.chapter_genres              
+      1010 -        full = st.session_state.current_story                
+      1011 -        st.markdown(_story_meta_bar(all_ch, all_g, language),
+           - unsafe_allow_html=True)                                     
+      1012 -        _show_download_button(all_ch, all_g, language, image_
+           -names)                                                       
+      1013 -        _show_narration_section(full, language)              
+      1014 -        twist2, cont2 = _show_continuation_panel(language)   
+      1015 -        if cont2:                                            
+      1016 -            st.session_state.is_continuing = True            
+      1017 -            st.rerun()                                       
+      1007 +            twist2, cont2 = _show_continuation_panel(language
+           +)                                                            
+      1008 +            if cont2:                                        
+      1009 +                st.session_state.is_continuing = True        
+      1010 +                _trigger_next_continuation = True            
+      1011  
+      1012 +    finally:                                                 
+      1013 +        # Always reset — even if script was interrupted mid-s
+           +tream                                                        
+      1014 +        if not _trigger_next_continuation:                   
+      1015 +            st.session_state.is_continuing = False           
+      1016 +                                                             
+      1017 +    # st.rerun() called AFTER finally block                  
+      1018 +    if _trigger_next_continuation:                           
+      1019 +        st.rerun()                                           
+      1020 +                                                             
+      1021  # ─── PATH 3: RESTORED STORY FROM HISTORY ───────────────────
+            ───────────────────
+      1022  
+      1023  elif st.session_state.restore_story is not None:
+
+⏺ Bash(cd "/Users/abhisheksaurav/Library/CloudStorage/OneDrive-iiitb.net/Documen
+      ts/gemini_story_generator" && python -c "
+      import ast…)
+  ⎿  OK  app.py
+
+⏺ Bash(pkill -f "streamlit run app.py" 2>/dev/null; sleep 1
+      cd "/Users/abhisheksaurav/Library/CloudStorage/OneDrive-iiitb.net/Document
+      s/gemini_story_generator" && pyth…)
+  ⎿    You can now view your Streamlit app in your browser.
+
+       Local URL: http://localhost:8501
+     … +6 lines (ctrl+o to expand)
+
+⏺ Running at http://localhost:8501. Here's what was actually broken and what was
+   fixed:
+
+  ---
+  Root causes & fixes
+
+  Bug 1 — st.rerun() inside with st.sidebar:
+  Calling st.rerun() raises RerunException which propagates through the
+  sidebar's context manager __exit__, leaving Streamlit's internal render state
+  dirty. Fixed by removing the st.rerun() call — the button click itself already
+   schedules a rerun automatically.
+
+  Bug 2 — is_generating stuck as True after continuation is triggered
+  In PATH 1, st.session_state.is_generating = False was the last line of the
+  block, but st.rerun() was called before it when the user clicked "Add
+  Chapter". RerunException skipped the cleanup line entirely, so is_generating
+  stayed True permanently — locking all buttons on subsequent reruns. Fixed with
+   try/finally: the flag is now guaranteed to reset before any st.rerun() is
+  called.
+
+  Bug 3 — Booleans reset to None instead of False
+  The reset handler was setting is_generating and is_continuing to None (the
+  generic fallback). Fixed to explicitly set them to False.
+
+  Bug 4 — Wrong return type annotation on _show_continuation_panel
+  Annotated as -> None but returns a tuple, causing Pylance errors. Fixed to -> 
+  tuple.
+
+✻ Cooked for 4m 37s
+
+❯ now update the files in github. make sure you don't upload the .env file it   
+has the api key                                                                 
+
+⏺ Bash(cd "/Users/abhisheksaurav/Library/CloudStorage/OneDrive-iiitb.net/Documen
+      ts/gemini_story_generator" && cat .gitignore)
+  ⎿  .env
+     .DS_Store
+
+⏺ Bash(cd "/Users/abhisheksaurav/Library/CloudStorage/OneDrive-iiitb.net/Documen
+      ts/gemini_story_generator" && git status && echo "---" && git remote -v)
+  ⎿  On branch v2-story-generator
+     Your branch is up to date with 'origin/v2-story-generator'.
+     … +23 lines (ctrl+o to expand)
+
+⏺ .env is already gitignored. Let me also add .story_history.json and
+  __pycache__/ to .gitignore before committing:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Write(.gitignore)
+  ⎿  Added 3 lines
+      1  .env
+      2  .DS_Store
+      3 +.story_history.json                                             
+      4 +__pycache__/                                                    
+      5 +*.pyc                                                           
+
+⏺ Bash(cd "/Users/abhisheksaurav/Library/CloudStorage/OneDrive-iiitb.net/Documen
+      ts/gemini_story_generator" && git add .gitignore README.md app.py
+      story_generator.py st…)
+  ⎿  On branch v2-story-generator
+     Your branch is up to date with 'origin/v2-story-generator'.
+     … +15 lines (ctrl+o to expand)
+
+⏺ .env, .story_history.json, __pycache__/, and .DS_Store are all excluded. Now
+  commit and push:
+
+⏺ Bash(cd "/Users/abhisheksaurav/Library/CloudStorage/OneDrive-iiitb.net/Documen
+      ts/gemini_story_generator" && git commit -m "$(cat <<'EOF'
+      Luminara v2.2 — streaming, h…)
+  ⎿  [v2-story-generator 7e0eb23] Luminara v2.2 — streaming, history, conti
+     nuation, multi-language, download
+      Committer: Abhishek Saurav <abhisheksaurav@Abhisheks-MacBook-Air.loca
+     … +16 lines (ctrl+o to expand)
+
+⏺ Bash(cd "/Users/abhisheksaurav/Library/CloudStorage/OneDrive-iiitb.net/Documen
+      ts/gemini_story_generator" && git push origin v2-story-generator)
+  ⎿  To https://github.com/abhishek-saurav/gemini_story_generator.git
+        02cdb4e..7e0eb23  v2-story-generator -> v2-story-generator
+
+⏺ Pushed successfully. Here's what went to GitHub:
+
+  ┌─────────────────────┬────────────────────────────────────────────────────┐
+  │        File         │                       Status                       │
+  ├─────────────────────┼────────────────────────────────────────────────────┤
+  │ app.py              │ Updated — full v2.2                                │
+  ├─────────────────────┼────────────────────────────────────────────────────┤
+  │ story_generator.py  │ Updated — streaming, continuation, multi-language  │
+  ├─────────────────────┼────────────────────────────────────────────────────┤
+  │ story_history.py    │ New — persistence module                           │
+  ├─────────────────────┼────────────────────────────────────────────────────┤
+  │ README.md           │ Updated — full project documentation               │
+  ├─────────────────────┼────────────────────────────────────────────────────┤
+  │ CHANGELOG.txt       │ New — complete audit trail                         │
+  ├─────────────────────┼────────────────────────────────────────────────────┤
+  │ PROJECT_DETAILS.txt │ New — technical documentation                      │
+  ├─────────────────────┼────────────────────────────────────────────────────┤
+  │ .gitignore          │ Updated — added .story_history.json, __pycache__/, │
+  │                     │  *.pyc                                             │
+  └─────────────────────┴────────────────────────────────────────────────────┘
+
+  Not uploaded (confirmed safe): .env (API key), .DS_Store, .story_history.json
+  (user data), __pycache__/
+
+  Repo: https://github.com/abhishek-saurav/gemini_story_generator on branch
+  v2-story-generator
+
+✻ Sautéed for 46s
